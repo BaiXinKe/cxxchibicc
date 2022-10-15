@@ -1,7 +1,7 @@
 #!/bin/bash
 assert() {
-    input="$1"
-    expect="$2"
+    input="$2"
+    expect="$1"
 
     ./cxxchibicc $input >tmp.s
     gcc -o tmp tmp.s
@@ -18,3 +18,4 @@ assert() {
 
 assert 0 0
 assert 42 42
+assert 21 '5+20-4'

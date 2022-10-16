@@ -1,98 +1,95 @@
+#include <cassert>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
 #include <memory>
 #include <sstream>
+#include <stdexcept>
 #include <string_view>
 
-// Input string
-static char* current_input;
+static char* current_token { nullptr };
 
-enum class TokenKind : uint8_t {
-    RESERVED,
-    NUM,
-    KEOF,
-};
-
-// Token type
-struct Token {
-    TokenKind kind; // Token kind
-    std::unique_ptr<Token> next; // Next token
-    int val; // If kind if num, its value
-    char* loc; // Token location
-    int len; // Token length
-
-    Token() = default;
-    Token(TokenKind k, char* str, int len)
-        : kind { k }
-        , next { nullptr }
-        , loc { str }
-        , len { len }
-    {
-    }
-};
-
-class CXXChibiccError : public std::runtime_error {
+class ChibiccException : public std::runtime_error {
 public:
-    explicit CXXChibiccError(std::string_view msg)
+    explicit ChibiccException(std::string_view message)
         : std::runtime_error { "" }
-        , message { msg }
+        , error_message_ { std::string(message.data(), message.length()) }
     {
     }
 
-    CXXChibiccError(char* loc, std::string_view msg)
-        : runtime_error { "" }
+    ChibiccException(const char* loc, std::string_view message)
+        : std::runtime_error { "" }
     {
-        std::ostringstream ifs;
-        ifs << "\n"
-            << current_input << "\n"
-            << std::setw(loc - current_input + 2) << "^ "
-            << msg;
-        message = ifs.str();
-    }
-    CXXChibiccError(const std::unique_ptr<Token>& token, std::string_view msg)
-        : CXXChibiccError { token->loc, msg }
-    {
+        std::ostringstream ofs;
+        ofs << std::string { current_token, ::strlen(current_token) } << "\n"
+            << std::setw(loc - current_token + 2) << "^ "
+            << message;
+        error_message_ = ofs.str();
     }
 
     virtual const char* what() const noexcept override
     {
-        return message.c_str();
+        return error_message_.c_str();
     }
 
 private:
-    std::string message {};
+    std::string error_message_;
+};
+
+enum class TokenKind {
+    PUNCT,
+    NUM,
+    END
+};
+
+struct Token;
+using TokenPtr = std::unique_ptr<Token>;
+
+struct Token {
+    TokenKind kind; // Token kind
+    TokenPtr next;
+    const char* loc;
+    int value;
+    int len;
+
+    Token() = default;
+    Token(TokenKind kind, const char* start, const char* end)
+        : kind { kind }
+        , loc { start }
+        , len { static_cast<int>(end - start) }
+    {
+    }
 };
 
 // Consumes the current token if it matches `s`.
-static bool equal(const std::unique_ptr<Token>& tok, const char* op)
+static bool equal(const TokenPtr& tok, const char* op)
 {
-    return strlen(op) == tok->len
-        && !strncmp(tok->loc, op, tok->len);
+    return memcmp(tok->loc, op, tok->len) == 0
+        && op[tok->len] == '\0';
 }
 
-// Ensure that the current token is `s`
-static std::unique_ptr<Token>& skip(const std::unique_ptr<Token>& tok, const char* s)
+// Ensure the current token if it matches `s`.
+static TokenPtr skip(const TokenPtr& tok, const char* s)
 {
     if (!equal(tok, s)) {
-        throw CXXChibiccError { tok, "expected '" + std::string(s) + "'" };
+        throw ChibiccException { tok->loc, "expected '" + std::string(s) + "'" };
     }
-    return tok->next;
+    return std::move(tok->next);
 }
 
-// Ensure that the current token is NUM
-static int get_number(const std::unique_ptr<Token>& tok)
+static int get_number(const TokenPtr& tok)
 {
     if (tok->kind != TokenKind::NUM) {
-        throw CXXChibiccError { tok, "expected a number" };
+        throw ChibiccException { tok->loc, "expected a number" };
     }
-    return tok->val;
+    return tok->value;
 }
 
-static std::unique_ptr<Token> tokenize(void)
+// Tokenize `current_input` and returns new tokens
+static TokenPtr tokenize(void)
 {
-    char* p = current_input;
-    Token head {};
+    char* p = current_token;
+    Token head = {};
     Token* cur = &head;
 
     while (*p) {
@@ -102,62 +99,204 @@ static std::unique_ptr<Token> tokenize(void)
             continue;
         }
 
-        // Numeric literal
+        // Number literal
         if (isdigit(*p)) {
-            cur->next = std::make_unique<Token>(TokenKind::NUM, p, 0);
+            cur->next = std::make_unique<Token>(TokenKind::NUM, p, p);
             cur = cur->next.get();
             char* q = p;
-            cur->val = strtoul(p, &p, 10);
+            cur->value = strtoul(p, &p, 10);
             cur->len = p - q;
             continue;
         }
 
-        // Punctuator
-        if (*p == '+' || *p == '-') {
-            cur->next = std::make_unique<Token>(TokenKind::RESERVED, p++, 1);
+        // Punctuators
+        if (ispunct(*p)) {
+            cur->next = std::make_unique<Token>(TokenKind::PUNCT, p, p + 1);
             cur = cur->next.get();
+            p++;
             continue;
         }
+
+        throw ChibiccException { p, "invalid token" };
     }
 
-    cur->next = std::make_unique<Token>(TokenKind::KEOF, p, 0);
+    cur->next = std::make_unique<Token>(TokenKind::END, p, p);
     return std::move(head.next);
+}
+
+// --------------------------------------- AST Node --------------------------------------------
+enum class NodeKind {
+    ADD, // +
+    SUB, // -
+    MUL, // *
+    DIV, // /
+    NUM, // Integer
+};
+
+struct Node;
+using NodePtr = std::unique_ptr<Node>;
+
+struct Node {
+    NodeKind kind;
+    NodePtr left;
+    NodePtr right;
+    int value;
+
+    explicit Node(NodeKind kind)
+        : kind { kind }
+        , left { nullptr }
+        , right { nullptr }
+    {
+    }
+
+    Node(NodeKind kind, NodePtr left, NodePtr right)
+        : kind { kind }
+        , left { std::move(left) }
+        , right { std::move(right) }
+    {
+    }
+
+    Node(int value)
+        : kind { NodeKind::NUM }
+        , left { nullptr }
+        , right { nullptr }
+        , value(value)
+    {
+    }
+};
+
+//
+// Code generator
+//
+static int depth;
+
+static void push(void)
+{
+    printf("  push %%rax\n");
+    depth++;
+}
+
+static void pop(const char* arg)
+{
+    printf("  pop %s\n", arg);
+    depth--;
+}
+
+static void gen_expr(NodePtr node)
+{
+    if (node->kind == NodeKind::NUM) {
+        printf("  mov $%d, %%rax\n", node->value);
+        return;
+    }
+
+    gen_expr(std::move(node->right));
+    push();
+    gen_expr(std::move(node->left));
+    pop("%rdi");
+
+    switch (node->kind) {
+    case NodeKind::ADD:
+        printf("  add %%rdi, %%rax\n");
+        return;
+    case NodeKind::SUB:
+        printf("  sub %%rdi, %%rax\n");
+        return;
+    case NodeKind::MUL:
+        printf("  imul %%rdi, %%rax\n");
+        return;
+    case NodeKind::DIV:
+        printf("  cqo\n");
+        printf("  idiv %%rdi\n");
+        return;
+    default:
+        break;
+    };
+
+    throw ChibiccException { "Invalid expression" };
+}
+
+static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
+static NodePtr mul(TokenPtr& rest, TokenPtr& tok);
+static NodePtr primary(TokenPtr& rest, TokenPtr& tok);
+
+NodePtr expr(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = mul(tok, tok);
+
+    for (;;) {
+        if (equal(tok, "+")) {
+            node = std::make_unique<Node>(NodeKind::ADD, std::move(node), mul(tok, tok->next));
+            continue;
+        }
+
+        if (equal(tok, "-")) {
+            node = std::make_unique<Node>(NodeKind::SUB, std::move(node), mul(tok, tok->next));
+            continue;
+        }
+        break;
+    }
+    rest = std::move(tok);
+    return node;
+}
+
+NodePtr mul(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = primary(tok, tok);
+
+    for (;;) {
+        if (equal(tok, "*")) {
+            node = std::make_unique<Node>(NodeKind::MUL, std::move(node), primary(tok, tok->next));
+            continue;
+        }
+
+        if (equal(tok, "/")) {
+            node = std::make_unique<Node>(NodeKind::DIV, std::move(node), primary(tok, tok->next));
+            continue;
+        }
+
+        break;
+    }
+    rest = std::move(tok);
+    return node;
+}
+
+NodePtr primary(TokenPtr& rest, TokenPtr& tok)
+{
+    if (tok->kind == TokenKind::NUM) {
+        NodePtr node = std::make_unique<Node>(get_number(tok));
+        rest = std::move(tok->next);
+        return node;
+    }
+
+    if (equal(tok, "(")) {
+        NodePtr node = expr(tok, tok->next);
+        rest = skip(tok, ")");
+        return node;
+    }
+
+    throw ChibiccException { tok->loc, "expected an expression" };
 }
 
 int main(int argc, char** argv)
 {
     if (argc != 2) {
-        std::cerr << argv[0] << ": invaild number of arguments";
+        fprintf(stderr, "%s: invalid number of arguments", argv[0]);
         return 1;
     }
 
-    current_input = argv[1];
-    try {
-        std::unique_ptr<Token> tok = tokenize();
+    current_token = argv[1];
+    TokenPtr tok = tokenize();
+    NodePtr node = expr(tok, tok);
 
-        std::cout << "  .global main\n";
-        std::cout << "main:\n";
+    if (tok->kind != TokenKind::END)
+        throw ChibiccException { tok->loc, "extra token" };
 
-        // The first token must be a number
-        std::cout << " mov $" << get_number(tok) << ", %rax\n";
-        tok = std::move(tok->next);
+    printf("  .global main\n");
+    printf("main:\n");
 
-        // ... followed by either `+ <number>` or `- <number>`
-        while (tok->kind != TokenKind::KEOF) {
-            if (equal(tok, "+")) {
-                std::cout << "  add $" << get_number(tok->next) << ", %rax\n";
-                tok = std::move(tok->next->next);
-                continue;
-            }
+    gen_expr(std::move(node));
+    printf("  ret\n");
 
-            tok = std::move(skip(tok, "-"));
-            std::cout << "  sub $" << get_number(tok) << ", %rax\n";
-            tok = std::move(tok->next);
-        }
-    } catch (const std::runtime_error& err) {
-        std::cerr << err.what() << "\n";
-    }
-
-    std::cout << "  ret\n";
+    assert(depth == 0);
     return 0;
 }

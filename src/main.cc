@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdio>
 #include <cstring>
 #include <iomanip>
 #include <iostream>
@@ -55,7 +56,9 @@ struct Token {
     Token() = default;
     Token(TokenKind kind, const char* start, const char* end)
         : kind { kind }
+        , next { nullptr }
         , loc { start }
+        , value { 0 }
         , len { static_cast<int>(end - start) }
     {
     }
@@ -130,6 +133,7 @@ enum class NodeKind {
     SUB, // -
     MUL, // *
     DIV, // /
+    NEG, // negtive integer
     NUM, // Integer
 };
 
@@ -146,6 +150,7 @@ struct Node {
         : kind { kind }
         , left { nullptr }
         , right { nullptr }
+        , value { 0 }
     {
     }
 
@@ -153,6 +158,7 @@ struct Node {
         : kind { kind }
         , left { std::move(left) }
         , right { std::move(right) }
+        , value { 0 }
     {
     }
 
@@ -168,7 +174,7 @@ struct Node {
 //
 // Code generator
 //
-static int depth;
+static int depth {};
 
 static void push(void)
 {
@@ -184,9 +190,17 @@ static void pop(const char* arg)
 
 static void gen_expr(NodePtr node)
 {
-    if (node->kind == NodeKind::NUM) {
+
+    switch (node->kind) {
+    case NodeKind::NUM:
         printf("  mov $%d, %%rax\n", node->value);
         return;
+    case NodeKind::NEG:
+        gen_expr(std::move(node->left));
+        printf(" neg %%rax\n");
+        return;
+    default:
+        break;
     }
 
     gen_expr(std::move(node->right));
@@ -217,6 +231,7 @@ static void gen_expr(NodePtr node)
 
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
 static NodePtr mul(TokenPtr& rest, TokenPtr& tok);
+static NodePtr unary(TokenPtr& rest, TokenPtr& tok);
 static NodePtr primary(TokenPtr& rest, TokenPtr& tok);
 
 NodePtr expr(TokenPtr& rest, TokenPtr& tok)
@@ -241,16 +256,16 @@ NodePtr expr(TokenPtr& rest, TokenPtr& tok)
 
 NodePtr mul(TokenPtr& rest, TokenPtr& tok)
 {
-    NodePtr node = primary(tok, tok);
+    NodePtr node = unary(tok, tok);
 
     for (;;) {
         if (equal(tok, "*")) {
-            node = std::make_unique<Node>(NodeKind::MUL, std::move(node), primary(tok, tok->next));
+            node = std::make_unique<Node>(NodeKind::MUL, std::move(node), unary(tok, tok->next));
             continue;
         }
 
         if (equal(tok, "/")) {
-            node = std::make_unique<Node>(NodeKind::DIV, std::move(node), primary(tok, tok->next));
+            node = std::make_unique<Node>(NodeKind::DIV, std::move(node), unary(tok, tok->next));
             continue;
         }
 
@@ -258,6 +273,19 @@ NodePtr mul(TokenPtr& rest, TokenPtr& tok)
     }
     rest = std::move(tok);
     return node;
+}
+
+NodePtr unary(TokenPtr& rest, TokenPtr& tok)
+{
+    if (equal(tok, "+")) {
+        return unary(rest, tok->next);
+    }
+
+    if (equal(tok, "-")) {
+        return std::make_unique<Node>(NodeKind::NEG, unary(rest, tok->next), nullptr);
+    }
+
+    return primary(rest, tok);
 }
 
 NodePtr primary(TokenPtr& rest, TokenPtr& tok)

@@ -43,6 +43,7 @@ enum class NodeKind {
     NE, // !=
     LT, // <
     LE, // <=
+    EXPR_STMT,
     NUM, // Integer
 };
 
@@ -51,10 +52,12 @@ using NodePtr = std::unique_ptr<Node>;
 
 struct Node {
     NodeKind kind;
+    NodePtr next;
     NodePtr left;
     NodePtr right;
     int value;
 
+    Node() = default;
     explicit Node(NodeKind kind)
         : kind { kind }
         , left { nullptr }

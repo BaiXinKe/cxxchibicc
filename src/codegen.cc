@@ -80,13 +80,24 @@ static void gen_expr(NodePtr node)
     throw ChibiccException { "Invalid expression" };
 }
 
+static void stmt_gen(NodePtr& node)
+{
+    if (node->kind == NodeKind::EXPR_STMT) {
+        gen_expr(std::move(node->left));
+        return;
+    }
+    throw ChibiccException { "invalid statement" };
+}
+
 void codegen(NodePtr node)
 {
     printf(" .global main\n");
     printf("main:\n");
 
-    gen_expr(std::move(node));
-    printf("  ret\n");
+    for (NodePtr n = std::move(node); n != nullptr; n = std::move(n->next)) {
+        stmt_gen(n);
+        assert(depth == 0);
+    }
 
-    assert(depth == 0);
+    printf("  ret\n");
 }

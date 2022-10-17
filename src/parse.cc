@@ -1,13 +1,27 @@
 #include "ChibiccException.h"
 #include "cxxchibicc.h"
+#include <memory>
 
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
+static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok);
 static NodePtr equality(TokenPtr& rest, TokenPtr& tok);
 static NodePtr relational(TokenPtr& rest, TokenPtr& tok);
 static NodePtr add(TokenPtr& rest, TokenPtr& tok);
 static NodePtr mul(TokenPtr& rest, TokenPtr& tok);
 static NodePtr unary(TokenPtr& rest, TokenPtr& tok);
 static NodePtr primary(TokenPtr& rest, TokenPtr& tok);
+
+static NodePtr stmt(TokenPtr& rest, TokenPtr& tok)
+{
+    return expr_stmt(rest, tok);
+}
+
+static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = std::make_unique<Node>(NodeKind::EXPR_STMT, expr(tok, tok), nullptr);
+    rest = skip(tok, ";");
+    return node;
+}
 
 NodePtr expr(TokenPtr& rest, TokenPtr& tok)
 {
@@ -138,8 +152,12 @@ NodePtr primary(TokenPtr& rest, TokenPtr& tok)
 
 NodePtr parse(TokenPtr tok)
 {
-    NodePtr node = expr(tok, tok);
-    if (tok->kind != TokenKind::END)
-        throw ChibiccException { tok->loc, "extra token" };
-    return node;
+    Node node {};
+    Node* cur = &node;
+
+    while (tok->kind != TokenKind::END) {
+        cur->next = stmt(tok, tok);
+        cur = cur->next.get();
+    }
+    return std::move(node.next);
 }

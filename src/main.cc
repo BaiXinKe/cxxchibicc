@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cctype>
 #include <cstdio>
 #include <cstring>
 #include <iomanip>
@@ -88,8 +89,22 @@ static int get_number(const TokenPtr& tok)
     return tok->value;
 }
 
+static bool startswidth(const char* p, const char* q)
+{
+    return strncmp(p, q, strlen(q)) == 0;
+}
+
+static int read_punct(const char* p)
+{
+    if (startswidth(p, "==") || startswidth(p, "!=") || startswidth(p, "<=")
+        || startswidth(p, ">="))
+        return 2;
+    return ispunct(*p) ? 1 : 0;
+}
+
 // Tokenize `current_input` and returns new tokens
-static TokenPtr tokenize(void)
+static TokenPtr
+tokenize(void)
 {
     char* p = current_token;
     Token head = {};
@@ -113,10 +128,11 @@ static TokenPtr tokenize(void)
         }
 
         // Punctuators
-        if (ispunct(*p)) {
-            cur->next = std::make_unique<Token>(TokenKind::PUNCT, p, p + 1);
+        int punct_len = read_punct(p);
+        if (punct_len > 0) {
+            cur->next = std::make_unique<Token>(TokenKind::PUNCT, p, p + punct_len);
             cur = cur->next.get();
-            p++;
+            p += punct_len;
             continue;
         }
 
@@ -134,6 +150,10 @@ enum class NodeKind {
     MUL, // *
     DIV, // /
     NEG, // negtive integer
+    EQ, // ==
+    NE, // !=
+    LT, // <
+    LE, // <=
     NUM, // Integer
 };
 
@@ -222,6 +242,25 @@ static void gen_expr(NodePtr node)
         printf("  cqo\n");
         printf("  idiv %%rdi\n");
         return;
+    case NodeKind::LT:
+    case NodeKind::LE:
+    case NodeKind::EQ:
+    case NodeKind::NE: {
+        printf("  cmp %%rdi, %%rax\n");
+
+        if (node->kind == NodeKind::EQ) {
+            printf("  sete %%al\n");
+        } else if (node->kind == NodeKind::NE) {
+            printf("  setne %%al\n");
+        } else if (node->kind == NodeKind::LT) {
+            printf("  setl %%al\n");
+        } else if (node->kind == NodeKind::LE) {
+            printf("  setle %%al\n");
+        }
+
+        printf("  movzb %%al, %%rax\n");
+        return;
+    }
     default:
         break;
     };
@@ -230,11 +269,70 @@ static void gen_expr(NodePtr node)
 }
 
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
+static NodePtr equality(TokenPtr& rest, TokenPtr& tok);
+static NodePtr relational(TokenPtr& rest, TokenPtr& tok);
+static NodePtr add(TokenPtr& rest, TokenPtr& tok);
 static NodePtr mul(TokenPtr& rest, TokenPtr& tok);
 static NodePtr unary(TokenPtr& rest, TokenPtr& tok);
 static NodePtr primary(TokenPtr& rest, TokenPtr& tok);
 
 NodePtr expr(TokenPtr& rest, TokenPtr& tok)
+{
+    return equality(rest, tok);
+}
+
+NodePtr equality(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = relational(tok, tok);
+
+    for (;;) {
+        if (equal(tok, "==")) {
+            node = std::make_unique<Node>(NodeKind::EQ, std::move(node), relational(tok, tok->next));
+            continue;
+        }
+
+        if (equal(tok, "!=")) {
+            node = std::make_unique<Node>(NodeKind::NE, std::move(node), relational(tok, tok->next));
+            continue;
+        }
+
+        rest = std::move(tok);
+        return node;
+    }
+}
+
+NodePtr relational(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = add(tok, tok);
+
+    for (;;) {
+
+        if (equal(tok, "<")) {
+            node = std::make_unique<Node>(NodeKind::LT, std::move(node), add(tok, tok->next));
+            continue;
+        }
+
+        if (equal(tok, "<=")) {
+            node = std::make_unique<Node>(NodeKind::LE, std::move(node), add(tok, tok->next));
+            continue;
+        }
+
+        if (equal(tok, ">")) {
+            node = std::make_unique<Node>(NodeKind::LT, add(tok, tok->next), std::move(node));
+            continue;
+        }
+
+        if (equal(tok, ">=")) {
+            node = std::make_unique<Node>(NodeKind::LE, add(tok, tok->next), std::move(node));
+            continue;
+        }
+
+        rest = std::move(tok);
+        return node;
+    }
+}
+
+NodePtr add(TokenPtr& rest, TokenPtr& tok)
 {
     NodePtr node = mul(tok, tok);
 
@@ -248,10 +346,10 @@ NodePtr expr(TokenPtr& rest, TokenPtr& tok)
             node = std::make_unique<Node>(NodeKind::SUB, std::move(node), mul(tok, tok->next));
             continue;
         }
-        break;
+
+        rest = std::move(tok);
+        return node;
     }
-    rest = std::move(tok);
-    return node;
 }
 
 NodePtr mul(TokenPtr& rest, TokenPtr& tok)

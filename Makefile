@@ -1,11 +1,13 @@
 CFLAGS=-std=c++2a -g -static -fno-common
 CC=g++
+SRCS=$(wildcard src/*.cc)
+OBJS=$(SRCS:.c=.o)
 
-cxxchibicc: main.o
-	$(CC) -o  $@ src/main.cc $(CFLAGS)
+cxxchibicc: $(OBJS)
+	$(CC) $(CFLAGS) -o  $@ $^ $(CFLAGS)
 
-main.o: src/main.cc
-	$(CC) -o $@ src/main.cc $(CFLAGS)
+$(OBJS): src/cxxchibicc.h
+
 
 test: cxxchibicc
 	./test.sh

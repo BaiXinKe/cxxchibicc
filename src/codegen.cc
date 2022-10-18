@@ -20,6 +20,16 @@ static void pop(const char* arg)
     depth--;
 }
 
+static void gen_addr(const NodePtr& node)
+{
+    if (node->kind == NodeKind::VAR) {
+        int offset = (node->name - 'a' + 1) * 8;
+        printf("  lea %d(%%rbp), %%rax\n", -offset);
+        return;
+    }
+    throw ChibiccException { "not an lvalue" };
+}
+
 static void gen_expr(NodePtr node)
 {
 
@@ -30,6 +40,17 @@ static void gen_expr(NodePtr node)
     case NodeKind::NEG:
         gen_expr(std::move(node->left));
         printf(" neg %%rax\n");
+        return;
+    case NodeKind::VAR:
+        gen_addr(node);
+        printf("  mov (%%rax), %%rax\n");
+        return;
+    case NodeKind::ASSIG:
+        gen_addr(node->left);
+        push();
+        gen_expr(std::move(node->right));
+        pop("%rdi");
+        printf("  mov %%rax, (%%rdi)\n");
         return;
     default:
         break;
@@ -94,10 +115,16 @@ void codegen(NodePtr node)
     printf(" .global main\n");
     printf("main:\n");
 
+    printf("  push %%rbp\n");
+    printf("  mov %%rsp, %%rbp\n");
+    printf("  sub $208, %%rsp\n");
+
     for (NodePtr n = std::move(node); n != nullptr; n = std::move(n->next)) {
         stmt_gen(n);
         assert(depth == 0);
     }
 
+    printf("  mov %%rbp, %%rsp\n");
+    printf("  pop %%rbp\n");
     printf("  ret\n");
 }

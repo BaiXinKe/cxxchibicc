@@ -2,6 +2,7 @@
 #include <memory>
 
 enum class TokenKind {
+    IDENT,
     PUNCT,
     NUM,
     END
@@ -43,7 +44,9 @@ enum class NodeKind {
     NE, // !=
     LT, // <
     LE, // <=
+    ASSIG, // =
     EXPR_STMT,
+    VAR, // Variable
     NUM, // Integer
 };
 
@@ -56,6 +59,7 @@ struct Node {
     NodePtr left;
     NodePtr right;
     int value;
+    char name;
 
     Node() = default;
     explicit Node(NodeKind kind)
@@ -63,6 +67,7 @@ struct Node {
         , left { nullptr }
         , right { nullptr }
         , value { 0 }
+        , name {}
     {
     }
 
@@ -71,14 +76,25 @@ struct Node {
         , left { std::move(left) }
         , right { std::move(right) }
         , value { 0 }
+        , name {}
     {
     }
 
-    Node(int value)
+    explicit Node(int value)
         : kind { NodeKind::NUM }
         , left { nullptr }
         , right { nullptr }
         , value(value)
+        , name {}
+    {
+    }
+
+    explicit Node(char c)
+        : kind { NodeKind::VAR }
+        , left { nullptr }
+        , right { nullptr }
+        , value {}
+        , name { c }
     {
     }
 };

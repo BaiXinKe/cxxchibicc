@@ -78,6 +78,14 @@ TokenPtr tokenize(char* p)
             continue;
         }
 
+        // Identity
+        if (*p >= 'a' && *p <= 'z') {
+            cur->next = std::make_unique<Token>(TokenKind::IDENT, p, p + 1);
+            cur = cur->next.get();
+            p += 1;
+            continue;
+        }
+
         // Punctuators
         int punct_len = read_punct(p);
         if (punct_len > 0) {

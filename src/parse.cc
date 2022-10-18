@@ -4,6 +4,7 @@
 
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
 static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok);
+static NodePtr assign(TokenPtr& rest, TokenPtr& tok);
 static NodePtr equality(TokenPtr& rest, TokenPtr& tok);
 static NodePtr relational(TokenPtr& rest, TokenPtr& tok);
 static NodePtr add(TokenPtr& rest, TokenPtr& tok);
@@ -25,7 +26,18 @@ static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok)
 
 NodePtr expr(TokenPtr& rest, TokenPtr& tok)
 {
-    return equality(rest, tok);
+    return assign(rest, tok);
+}
+
+NodePtr assign(TokenPtr& rest, TokenPtr& tok)
+{
+    NodePtr node = equality(tok, tok);
+
+    if (equal(tok, "=")) {
+        node = std::make_unique<Node>(NodeKind::ASSIG, std::move(node), assign(tok, tok->next));
+    }
+    rest = std::move(tok);
+    return node;
 }
 
 NodePtr equality(TokenPtr& rest, TokenPtr& tok)
@@ -137,6 +149,12 @@ NodePtr primary(TokenPtr& rest, TokenPtr& tok)
 {
     if (tok->kind == TokenKind::NUM) {
         NodePtr node = std::make_unique<Node>(tok->value);
+        rest = std::move(tok->next);
+        return node;
+    }
+
+    if (tok->kind == TokenKind::IDENT) {
+        NodePtr node = std::make_unique<Node>(*tok->loc);
         rest = std::move(tok->next);
         return node;
     }

@@ -46,6 +46,16 @@ static bool startswidth(const char* p, const char* q)
     return strncmp(p, q, strlen(q)) == 0;
 }
 
+static bool is_ident1(char p)
+{
+    return (p >= 'a' && p <= 'z') || (p >= 'A' && p <= 'Z') || p == '_';
+}
+
+static bool is_ident2(char p)
+{
+    return is_ident1(p) || (p >= '0' && p <= '9');
+}
+
 static int read_punct(const char* p)
 {
     if (startswidth(p, "==") || startswidth(p, "!=") || startswidth(p, "<=")
@@ -79,10 +89,13 @@ TokenPtr tokenize(char* p)
         }
 
         // Identity
-        if (*p >= 'a' && *p <= 'z') {
-            cur->next = std::make_unique<Token>(TokenKind::IDENT, p, p + 1);
+        if (is_ident1(*p)) {
+            char* start = p;
+            do {
+                p++;
+            } while (is_ident2(*p));
+            cur->next = std::make_unique<Token>(TokenKind::IDENT, start, p);
             cur = cur->next.get();
-            p += 1;
             continue;
         }
 

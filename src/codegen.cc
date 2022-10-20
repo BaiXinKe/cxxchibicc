@@ -23,8 +23,7 @@ static void pop(const char* arg)
 static void gen_addr(const NodePtr& node)
 {
     if (node->kind == NodeKind::VAR) {
-        int offset = (node->name - 'a' + 1) * 8;
-        printf("  lea %d(%%rbp), %%rax\n", -offset);
+        printf("  lea %d(%%rbp), %%rax\n", node->obj->offset);
         return;
     }
     throw ChibiccException { "not an lvalue" };
@@ -110,16 +109,33 @@ static void stmt_gen(NodePtr& node)
     throw ChibiccException { "invalid statement" };
 }
 
-void codegen(NodePtr node)
+static int align_to(int n, int align)
 {
+    return (n + align - 1) / align * align;
+}
+
+static void assign_lvar_offset(FunctionPtr& prog)
+{
+    int offset = 0;
+    for (Obj* var = prog->locals.get(); var != nullptr; var = var->next.get()) {
+        offset += 8;
+        var->offset = -offset;
+    }
+    prog->stack_size = offset;
+}
+
+void codegen(FunctionPtr prog)
+{
+    assign_lvar_offset(prog);
+
     printf(" .global main\n");
     printf("main:\n");
 
     printf("  push %%rbp\n");
     printf("  mov %%rsp, %%rbp\n");
-    printf("  sub $208, %%rsp\n");
+    printf("  sub $%d, %%rsp\n", prog->stack_size);
 
-    for (NodePtr n = std::move(node); n != nullptr; n = std::move(n->next)) {
+    for (NodePtr n = std::move(prog->body); n != nullptr; n = std::move(n->next)) {
         stmt_gen(n);
         assert(depth == 0);
     }

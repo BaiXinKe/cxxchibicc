@@ -2,6 +2,20 @@
 #include "cxxchibicc.h"
 #include <memory>
 
+static Obj locals;
+
+static Obj* find_var(const TokenPtr& tok)
+{
+    Obj* cur = locals.next.get();
+    while (cur != nullptr) {
+        if (cur->name.size() == tok->len
+            && cur->name == std::string(tok->loc, tok->len))
+            return cur;
+        cur = cur->next.get();
+    }
+    return nullptr;
+}
+
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
 static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok);
 static NodePtr assign(TokenPtr& rest, TokenPtr& tok);
@@ -154,9 +168,15 @@ NodePtr primary(TokenPtr& rest, TokenPtr& tok)
     }
 
     if (tok->kind == TokenKind::IDENT) {
-        NodePtr node = std::make_unique<Node>(*tok->loc);
+        Obj* var = find_var(tok);
+        if (var == nullptr) {
+            var = new Obj { tok->loc, tok->len };
+            ObjPtr ptr { var };
+            var->next = std::move(locals.next);
+            locals.next = std::move(ptr);
+        }
         rest = std::move(tok->next);
-        return node;
+        return std::make_unique<Node>(var);
     }
 
     if (equal(tok, "(")) {
@@ -168,7 +188,7 @@ NodePtr primary(TokenPtr& rest, TokenPtr& tok)
     throw ChibiccException { tok->loc, "expected an expression" };
 }
 
-NodePtr parse(TokenPtr tok)
+FunctionPtr parse(TokenPtr tok)
 {
     Node node {};
     Node* cur = &node;
@@ -177,5 +197,7 @@ NodePtr parse(TokenPtr tok)
         cur->next = stmt(tok, tok);
         cur = cur->next.get();
     }
-    return std::move(node.next);
+
+    FunctionPtr prog = std::make_unique<Function>(std::move(locals.next), std::move(node.next));
+    return prog;
 }

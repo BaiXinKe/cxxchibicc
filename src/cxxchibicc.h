@@ -50,6 +50,22 @@ enum class NodeKind {
     NUM, // Integer
 };
 
+struct Obj {
+    std::unique_ptr<Obj> next;
+    std::string name;
+    int offset;
+
+    Obj() = default;
+
+    Obj(const char* n, const int len)
+        : next { nullptr }
+        , name { std::string(n, len) }
+        , offset {}
+    {
+    }
+};
+using ObjPtr = std::unique_ptr<Obj>;
+
 struct Node;
 using NodePtr = std::unique_ptr<Node>;
 
@@ -59,7 +75,7 @@ struct Node {
     NodePtr left;
     NodePtr right;
     int value;
-    char name;
+    Obj* obj;
 
     Node() = default;
     explicit Node(NodeKind kind)
@@ -67,7 +83,7 @@ struct Node {
         , left { nullptr }
         , right { nullptr }
         , value { 0 }
-        , name {}
+        , obj { nullptr }
     {
     }
 
@@ -76,7 +92,17 @@ struct Node {
         , left { std::move(left) }
         , right { std::move(right) }
         , value { 0 }
-        , name {}
+        , obj { nullptr }
+    {
+    }
+
+    Node(Obj* o)
+        : kind { NodeKind::VAR }
+        , next { nullptr }
+        , left { nullptr }
+        , right { nullptr }
+        , value {}
+        , obj { o }
     {
     }
 
@@ -85,7 +111,7 @@ struct Node {
         , left { nullptr }
         , right { nullptr }
         , value(value)
-        , name {}
+        , obj { nullptr }
     {
     }
 
@@ -94,11 +120,25 @@ struct Node {
         , left { nullptr }
         , right { nullptr }
         , value {}
-        , name { c }
+        , obj { nullptr }
     {
     }
 };
 
-NodePtr parse(TokenPtr tok);
+struct Function {
+    std::unique_ptr<Obj> locals;
+    std::unique_ptr<Node> body;
+    int stack_size;
 
-void codegen(NodePtr node);
+    Function(std::unique_ptr<Obj> local, std::unique_ptr<Node> body)
+        : locals { std::move(local) }
+        , body { std::move(body) }
+        , stack_size { 0 }
+    {
+    }
+};
+using FunctionPtr = std::unique_ptr<Function>;
+
+FunctionPtr parse(TokenPtr tok);
+
+void codegen(FunctionPtr node);

@@ -64,6 +64,21 @@ static int read_punct(const char* p)
     return ispunct(*p) ? 1 : 0;
 }
 
+static void convert_keywords(TokenPtr& tok)
+{
+    auto inner_equal = [](Token* t) {
+        const char* return_str = "return";
+        return memcmp(t->loc, return_str, t->len) == 0
+            && return_str[t->len] == '\0';
+    };
+
+    for (Token* ptok = tok.get(); ptok != nullptr; ptok = ptok->next.get()) {
+        if (inner_equal(ptok)) {
+            ptok->kind = TokenKind::KEYWORDS;
+        }
+    }
+}
+
 // Tokenize `current_input` and returns new tokens
 TokenPtr tokenize(char* p)
 {
@@ -112,5 +127,6 @@ TokenPtr tokenize(char* p)
     }
 
     cur->next = std::make_unique<Token>(TokenKind::END, p, p);
+    convert_keywords(head.next);
     return std::move(head.next);
 }

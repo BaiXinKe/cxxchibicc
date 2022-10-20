@@ -4,6 +4,7 @@
 enum class TokenKind {
     IDENT,
     PUNCT,
+    KEYWORDS,
     NUM,
     END
 };
@@ -46,6 +47,7 @@ enum class NodeKind {
     LE, // <=
     ASSIG, // =
     EXPR_STMT,
+    RETURN, // return
     VAR, // Variable
     NUM, // Integer
 };

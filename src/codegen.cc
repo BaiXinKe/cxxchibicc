@@ -102,8 +102,13 @@ static void gen_expr(NodePtr node)
 
 static void stmt_gen(NodePtr& node)
 {
-    if (node->kind == NodeKind::EXPR_STMT) {
+    switch (node->kind) {
+    case NodeKind::EXPR_STMT:
         gen_expr(std::move(node->left));
+        return;
+    case NodeKind::RETURN:
+        gen_expr(std::move(node->left));
+        printf("  jmp .L.return\n");
         return;
     }
     throw ChibiccException { "invalid statement" };
@@ -140,6 +145,7 @@ void codegen(FunctionPtr prog)
         assert(depth == 0);
     }
 
+    printf("  .L.return:\n");
     printf("  mov %%rbp, %%rsp\n");
     printf("  pop %%rbp\n");
     printf("  ret\n");

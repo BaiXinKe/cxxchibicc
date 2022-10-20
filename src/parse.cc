@@ -28,6 +28,12 @@ static NodePtr primary(TokenPtr& rest, TokenPtr& tok);
 
 static NodePtr stmt(TokenPtr& rest, TokenPtr& tok)
 {
+    if (tok->kind == TokenKind::KEYWORDS) {
+        NodePtr node = std::make_unique<Node>(NodeKind::RETURN, expr(tok, tok->next), nullptr);
+        rest = skip(tok, ";");
+        return node;
+    }
+
     return expr_stmt(rest, tok);
 }
 

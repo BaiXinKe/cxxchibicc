@@ -47,6 +47,7 @@ enum class NodeKind {
     LE, // <=
     ASSIG, // =
     EXPR_STMT,
+    BLOCK,
     RETURN, // return
     VAR, // Variable
     NUM, // Integer
@@ -76,6 +77,9 @@ struct Node {
     NodePtr next;
     NodePtr left;
     NodePtr right;
+
+    NodePtr body;
+
     int value;
     Obj* obj;
 

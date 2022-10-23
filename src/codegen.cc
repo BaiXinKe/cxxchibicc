@@ -106,6 +106,10 @@ static void stmt_gen(NodePtr& node)
     case NodeKind::EXPR_STMT:
         gen_expr(std::move(node->left));
         return;
+    case NodeKind::BLOCK:
+        for (NodePtr n = std::move(node->body); n != nullptr; n = std::move(n->next))
+            stmt_gen(n);
+        return;
     case NodeKind::RETURN:
         gen_expr(std::move(node->left));
         printf("  jmp .L.return\n");
@@ -140,12 +144,10 @@ void codegen(FunctionPtr prog)
     printf("  mov %%rsp, %%rbp\n");
     printf("  sub $%d, %%rsp\n", prog->stack_size);
 
-    for (NodePtr n = std::move(prog->body); n != nullptr; n = std::move(n->next)) {
-        stmt_gen(n);
-        assert(depth == 0);
-    }
+    stmt_gen(prog->body);
+    assert(depth == 0);
 
-    printf("  .L.return:\n");
+    printf(".L.return:\n");
     printf("  mov %%rbp, %%rsp\n");
     printf("  pop %%rbp\n");
     printf("  ret\n");

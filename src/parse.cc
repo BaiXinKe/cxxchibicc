@@ -16,6 +16,7 @@ static Obj* find_var(const TokenPtr& tok)
     return nullptr;
 }
 
+static NodePtr compound_stmt(TokenPtr& rest, TokenPtr& tok);
 static NodePtr expr(TokenPtr& rest, TokenPtr& tok);
 static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok);
 static NodePtr assign(TokenPtr& rest, TokenPtr& tok);
@@ -34,7 +35,25 @@ static NodePtr stmt(TokenPtr& rest, TokenPtr& tok)
         return node;
     }
 
+    if (equal(tok, "{"))
+        return compound_stmt(rest, tok->next);
+
     return expr_stmt(rest, tok);
+}
+
+static NodePtr compound_stmt(TokenPtr& rest, TokenPtr& tok)
+{
+    Node head = {};
+    Node* cur = &head;
+    while (!equal(tok, "}")) {
+        cur->next = stmt(tok, tok);
+        cur = cur->next.get();
+    }
+
+    NodePtr node = std::make_unique<Node>(NodeKind::BLOCK);
+    node->body = std::move(head.next);
+    rest = std::move(tok->next);
+    return node;
 }
 
 static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok)
@@ -196,14 +215,6 @@ NodePtr primary(TokenPtr& rest, TokenPtr& tok)
 
 FunctionPtr parse(TokenPtr tok)
 {
-    Node node {};
-    Node* cur = &node;
-
-    while (tok->kind != TokenKind::END) {
-        cur->next = stmt(tok, tok);
-        cur = cur->next.get();
-    }
-
-    FunctionPtr prog = std::make_unique<Function>(std::move(locals.next), std::move(node.next));
-    return prog;
+    tok = skip(tok, "{");
+    return std::make_unique<Function>(std::move(locals.next), compound_stmt(tok, tok));
 }

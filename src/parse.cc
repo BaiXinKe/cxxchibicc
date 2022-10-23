@@ -58,6 +58,11 @@ static NodePtr compound_stmt(TokenPtr& rest, TokenPtr& tok)
 
 static NodePtr expr_stmt(TokenPtr& rest, TokenPtr& tok)
 {
+    if (equal(tok, ";")) {
+        rest = std::move(tok->next);
+        return std::make_unique<Node>(NodeKind::BLOCK);
+    }
+
     NodePtr node = std::make_unique<Node>(NodeKind::EXPR_STMT, expr(tok, tok), nullptr);
     rest = skip(tok, ";");
     return node;
